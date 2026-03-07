@@ -6,6 +6,8 @@
 #include <stdexcept>
 #include <unistd.h>
 #include <iostream>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 
 class Socket{
 public:
