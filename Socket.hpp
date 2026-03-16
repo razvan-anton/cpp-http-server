@@ -8,6 +8,8 @@
 #include <iostream>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <cerrno>
+#include <cstring>
 
 class Socket{
 public:
@@ -15,7 +17,7 @@ public:
     explicit Socket(int fd) : fd_(fd)    // Constructor 1
     {
         if(fd_<0)
-            throw std::invalid_argument("File descriptor must ve positive");
+            throw std::invalid_argument("File descriptor must be positive");
     }
 
     Socket() : fd_(socket(AF_INET, SOCK_STREAM, 0))   // Constructor 2

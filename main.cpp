@@ -10,16 +10,10 @@ int main() {
         // 2. Instantiate the server
         std::cout << "Initializing server on port " << port << "..." << std::endl;
         TCPserver server(port);
+        
 
-        // 3. Start the server (this triggers the bind call)
+        std::cout<<"Starting server.."<<std::endl;
         server.start();
-
-        std::cout << "Successfully bound to port " << port << "!" << std::endl;
-        std::cout << "Press Ctrl+C to shut down." << std::endl;
-
-        while (true) {
-            // Server is idling...
-        }
 
     } catch (const std::exception& e) {
         // This catches your 'throw' from Socket or TCPServer
