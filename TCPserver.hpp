@@ -1,5 +1,5 @@
-#ifndef TCP_server
-#define TCP_server
+#ifndef TCP_server_HPP
+#define TCP_server_HPP
 
 #include "Socket.hpp"
 #include <netinet/in.h>
