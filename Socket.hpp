@@ -1,5 +1,5 @@
-#ifndef SOCKET_HEADER
-#define SOCKET_HEADER
+#ifndef SOCKET_HEADER_HPP
+#define SOCKET_HEADER_HPP
 
 #include <sys/socket.h>
 #include <sys/types.h>
@@ -33,15 +33,40 @@ public:
         return fd_;
     }
 
-
-
     ~Socket()       // Destructor
     {
         if (fd_>=0)
             close(fd_);
     }
 
+    // TO DO: de citit despre asta
+    // 2. Move Constructor (Transferring ownership)
+    Socket(Socket&& other) noexcept : fd_(other.fd_)  // noexcept pentru//
+    {
+        other.fd_=-1;
+    }
 
+    // TO DO: de citit despre asta:
+    // 3. Move assignment
+    Socket& operator=(Socket&& other) noexcept{
+        //check to not move an object into itself
+        if(this == &other)
+        {
+            return *this;
+        }
+        
+        if (fd_ >= 0)
+            close(fd_);
+
+        fd_=other.fd_;
+
+        other.fd_=-1;
+
+        return *this;
+    }
+
+
+    // TO DO: de citit despre asta
     Socket(const Socket&) = delete; 
     Socket& operator=(const Socket&) = delete;
     // this prevents copies from being made of this object in all possible ways
