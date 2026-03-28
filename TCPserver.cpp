@@ -45,7 +45,7 @@ void TCPserver::start()
         // std::cerr<<"New connection succeeded on FD: "<<fd2<<std::endl;
         // V1
         Socket client(fd2);
-        ConnectionState Conn(client);
+        ConnectionState Conn(std::move(client));
         
         
 
