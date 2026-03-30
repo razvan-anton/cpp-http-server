@@ -2,7 +2,7 @@
 #define SOCKET_HEADER_HPP
 
 #include <sys/socket.h>
-#include <sys/types.h>
+#include <cstddef>
 #include <stdexcept>
 #include <unistd.h>
 #include <iostream>
