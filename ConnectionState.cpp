@@ -7,7 +7,7 @@ ConnectionState::ConnectionState(Socket&& sock) :
     state_(State::READING_HEADERS),
     request_{},
     offset_(0)
-    {   request_.content_length = -1;   }; 
+    {   request_.content_length = -1;   }
     //initialise to -1 so we can tell when the content has been read / set to 0
 
 State ConnectionState::process()
