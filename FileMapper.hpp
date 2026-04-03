@@ -1,10 +1,16 @@
 #ifndef FILE_MAPPER
 #define FILE_MAPPER
 
-#include <string_view>
+#define _FILE_OFFSET_BITS 64
+// to force the 32-bit systems to use a 8 byte value for size to support larger file
+
 #include <string>
+#include <string_view>
 #include <sys/mman.h> // for mmap, munmap..
 #include <cstddef> // for size_t
+#include <fcntl.h>  // for open
+#include <sys/stat.h>   // for fstat
+#include <unistd.h> // for close
 
 class FileMapper{
 public:
