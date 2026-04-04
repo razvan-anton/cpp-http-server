@@ -22,6 +22,8 @@ public:
 
     int get_fd();
 
+    std::string_view getURI();
+
 private:
     Socket socket_;
     char buffer_[8192];   // 8 KB stack allocated buffer, max data we can receive

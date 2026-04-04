@@ -148,3 +148,8 @@ void ConnectionState::parse_request()
         }
     }
 }
+
+std::string_view ConnectionState::getURI()
+{
+    return request_.uri;
+}
