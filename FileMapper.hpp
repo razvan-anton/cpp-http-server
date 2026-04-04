@@ -11,6 +11,8 @@
 #include <fcntl.h>  // for open
 #include <sys/stat.h>   // for fstat
 #include <unistd.h> // for close
+#include <iostream> // to error logs
+#include <cerrno>
 
 class FileMapper{
 public:
@@ -18,7 +20,7 @@ public:
 
     ~FileMapper();
 
-    void *get_data();
+    const void *get_data();
 
     size_t get_size();
 
@@ -26,7 +28,7 @@ public:
 
 
 private:
-    void * data_; // type void * cuz it points to raw bytes
+    const void * data_; // type void * cuz it points to raw bytes
     size_t size_;
 };
 

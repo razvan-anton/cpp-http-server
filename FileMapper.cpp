@@ -11,7 +11,7 @@ FileMapper::FileMapper(const std::string &path) : // reference la string, ca sa 
     //open gives us the fd
     if(file_fd==-1)
     {
-        throw(std::__throw_system_error);
+        throw std::system_error(errno, std::generic_category(), "Failed to open file");
     }
 
     struct stat statbuf; // this will get filled by fstat with all the file's data
@@ -19,6 +19,8 @@ FileMapper::FileMapper(const std::string &path) : // reference la string, ca sa 
     if(fstat(file_fd,&statbuf)==0)
     {
         // returns 0 on success
+        size_=statbuf.st_size;
+
         if(statbuf.st_size == 0)
         {
             size_=0;
@@ -32,16 +34,16 @@ FileMapper::FileMapper(const std::string &path) : // reference la string, ca sa 
             data_=mmap(NULL, size_, PROT_READ, MAP_PRIVATE,file_fd, 0);
             close(file_fd); // in either case, we don't need it anymore, so we just close it
 
-            if(data_=MAP_FAILED)
+            if(data_==MAP_FAILED)
             {
-                throw(std::__throw_system_error);
+                throw std::system_error(errno, std::generic_category(), "Map failed");
             }
         }
     }
     else
     {
         close(file_fd); // critial to avoid leaks
-        throw(std::__throw_system_error);
+        throw std::system_error(errno, std::generic_category(), "Fstat failed");
     }
 
 
@@ -50,10 +52,18 @@ FileMapper::FileMapper(const std::string &path) : // reference la string, ca sa 
 
 FileMapper::~FileMapper()
 {
-    munmap(data_, size_);
+    // const_cast, deoarece munmap asteapta void *, iar noi avem const void * pt safety
+    if (data_ && data_ != MAP_FAILED && size_>0)
+    {
+        if(munmap(const_cast<void*>(data_), size_)==-1)
+        {
+            // this shouldn't happen, but if it does, we should know
+            std::cerr<<"munmap failed"<<std::endl;
+        }
+    }
 }
 
-void * FileMapper::get_data()
+const void * FileMapper::get_data()
 {
     return data_;
 }

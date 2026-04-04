@@ -36,7 +36,9 @@ public:
     ~Socket()       // Destructor
     {
         if (fd_>=0)
+        {
             close(fd_);
+        }
     }
 
     // TO DO: de citit despre asta
