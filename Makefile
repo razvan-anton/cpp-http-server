@@ -1,7 +1,7 @@
 # Variables
 CXX = g++
-CXXFLAGS = -Wall -Wextra -std=c++17
-SRCS = main.cpp TCPserver.cpp ConnectionState.cpp Parser.cpp
+CXXFLAGS = -Wall -Wextra -Werror -g -std=c++17
+SRCS = $(wildcard *.cpp) # all .cpp files go here
 NAME = my_server
 
 # The "all" rule - what happens when you just type 'make'
