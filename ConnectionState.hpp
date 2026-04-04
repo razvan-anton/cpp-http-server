@@ -24,6 +24,8 @@ public:
 
     std::string_view getURI();
 
+    void close_gracefully();
+
 private:
     Socket socket_;
     char buffer_[8192];   // 8 KB stack allocated buffer, max data we can receive

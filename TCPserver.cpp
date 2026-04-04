@@ -67,9 +67,7 @@ void TCPserver::start()
                         // PathUtils a gasit o problema la path given
 
                         // TO DO: Logging System
-                        std::string err = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
-                        send(Conn.get_fd(), err.c_str(), err.size(), MSG_NOSIGNAL);
-
+                        Conn.close_gracefully();
 
                         break;
                     }
@@ -161,8 +159,7 @@ void TCPserver::start()
                         // daca suntem aici, a fost o problema la FileMapper
                         std::cerr << "[ERROR]"<<e.what() << std::endl;
 
-                        std::string err = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
-                        send(fd, err.c_str(), err.size(), MSG_NOSIGNAL);
+                        Conn.close_gracefully();
 
                         break;
                     }

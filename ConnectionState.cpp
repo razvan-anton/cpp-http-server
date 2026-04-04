@@ -153,3 +153,18 @@ std::string_view ConnectionState::getURI()
 {
     return request_.uri;
 }
+
+void ConnectionState::close_gracefully()
+{
+    std::string err = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+    send(socket_.get_fd(), err.c_str(), err.size(), MSG_NOSIGNAL);
+
+    shutdown(socket_.get_fd(), SHUT_WR); 
+    // The Kernel sends a FIN (Finish) packet to the client
+
+    // (consume any remaining bytes from client)
+    char junk[1024];
+    while(recv(socket_.get_fd(), junk, sizeof(junk), MSG_DONTWAIT) > 0);
+    // flag-ul MSG_DONTWAIT e ca sa trimita tot ce are acum in buffer, 
+    // si sa nu stea sa astepte dupa client deloc
+}
