@@ -10,6 +10,8 @@
 #include <arpa/inet.h>
 #include <cerrno>
 #include <cstring>
+#include <fcntl.h>
+
 
 class Socket{
 public:
@@ -31,6 +33,14 @@ public:
     int get_fd() const
     {
         return fd_;
+    }
+
+    void set_non_blocking()
+    {
+        if (fcntl(fd_, F_SETFL, O_NONBLOCK) == -1)
+        {
+            throw std::runtime_error("Failed to set socket to non-blocking mode: " + std::string(std::strerror(errno)));
+        }
     }
 
     ~Socket()       // Destructor
