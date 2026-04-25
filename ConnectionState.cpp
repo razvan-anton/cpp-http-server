@@ -1,9 +1,8 @@
 #include "ConnectionState.hpp"
 
-
 ConnectionState::ConnectionState(Socket&& sock) :
     socket_(std::move(sock)),
-    buffer_{},
+    buffer_{},   // TO DO: add writing to a file if a user wants to send a bigger request
     state_(State::READING_HEADERS),
     request_{},
     offset_(0)

@@ -10,6 +10,11 @@
 #include <netinet/in.h>
 #include <optional> // for std::optional<string>
 
+#include <sys/epoll.h> // for epoll
+
+#define MAX_EVENTS 512 // max number of events that epoll_wait can return at once
+#define MAX_CONNECTIONS 10000 // max number of clients that can be connected at once
+
 
 class TCPserver
 {
@@ -17,6 +22,8 @@ public:
     explicit TCPserver(uint16_t port);
 
     void start();
+
+    void process_client(int client_fd);
 
 private:
     uint16_t port_;
