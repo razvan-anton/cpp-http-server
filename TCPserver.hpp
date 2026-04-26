@@ -2,9 +2,7 @@
 #define TCP_server_HPP
 
 #include "Socket.hpp"
-#include "PathUtils.hpp"
-#include "FileMapper.hpp"
-#include "MimeTypes.hpp"
+
 
 #include <string_view>
 #include <netinet/in.h>
@@ -23,7 +21,7 @@ public:
 
     void start();
 
-    void process_client(int client_fd);
+    void process_new_client(const int client_fd, const int epoll_fd);
 
 private:
     uint16_t port_;

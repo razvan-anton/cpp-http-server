@@ -5,9 +5,37 @@ ConnectionState::ConnectionState(Socket&& sock) :
     buffer_{},   // TO DO: add writing to a file if a user wants to send a bigger request
     state_(State::READING_HEADERS),
     request_{},
-    offset_(0)
+    offset_(0),
+    header_offset(0),
+    file_size(-1),
+    file_fd(-1),
+    current_events(EPOLLIN | EPOLLET),
+    is_active(1)
     {   request_.content_length = -1;   }
     //initialise to -1 so we can tell when the content has been read / set to 0
+
+ConnectionState::ConnectionState() :
+    is_active(0){}
+
+void ConnectionState::init(Socket&& sock)
+{
+    socket_=(std::move(sock));
+}
+
+void ConnectionState::reset()
+{
+    file_fd=-1;
+    file_size=-1;
+    offset_=0;
+    header_offset=0;
+    is_active=1;
+    request_.reset();
+    state_=State::READING_HEADERS;
+    uint32_t current_events = EPOLLIN | EPOLLET;
+    // no need to reset socket cuz fd's are closed in the TCPserver side
+}
+
+
 
 State ConnectionState::process()
 {
@@ -39,7 +67,7 @@ State ConnectionState::process()
 
     if(state_==State::READING_HEADERS or state_==State::READING_BODY)
     {
-        if(offset_ < sizeof(buffer_))
+        while(offset_ < sizeof(buffer_))
         {
             ssize_t len=recv(socket_.get_fd(), buffer_ + offset_, sizeof(buffer_) - offset_, 0);
 
@@ -49,9 +77,10 @@ State ConnectionState::process()
             // len e cati bytes am citit
             if(len<0)  // this means error
             {
-                if (errno == EAGAIN || errno == EWOULDBLOCK) //we try again
+                if (errno == EAGAIN || errno == EWOULDBLOCK)
                 {
-                    // cand facem epoll schimbam aici - TO DO
+                    // that means we read all current data, and have to wait for the next edge trigger to get more
+                    return state_;
                 }
                 else
                 {
@@ -76,13 +105,15 @@ State ConnectionState::process()
 
                 return state_;
             }
+
+
         }
-        else
-        { // no room left in the buffer
-            std::cerr<<"Message to long. Failed to send on fd "<<socket_.get_fd()<<std::endl;
-            state_=State::ERROR;
-            return state_;
-        }
+
+        // if we are here, there is no room left in the buffer
+        std::cerr<<"Message to long. Failed to send on fd "<<socket_.get_fd()<<std::endl;
+        state_=State::ERROR;
+        return state_;
+        
     }
     return state_; 
 }
@@ -155,6 +186,7 @@ std::string_view ConnectionState::getURI()
 
 void ConnectionState::close_gracefully()
 {
+    is_active=0;
     std::string err = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
     send(socket_.get_fd(), err.c_str(), err.size(), MSG_NOSIGNAL);
 
@@ -166,4 +198,163 @@ void ConnectionState::close_gracefully()
     while(recv(socket_.get_fd(), junk, sizeof(junk), MSG_DONTWAIT) > 0);
     // flag-ul MSG_DONTWAIT e ca sa trimita tot ce are acum in buffer, 
     // si sa nu stea sa astepte dupa client deloc
+}
+
+
+bool ConnectionState::active()
+{
+    return is_active;
+}
+
+void ConnectionState::send_response(const int epfd)
+{
+    if( state_ == State::SENDING_HEADER)
+    {
+        auto URI = this->getURI();
+        std::optional<std::string> optional_path=File::get_abs_path(URI);
+        if(!optional_path)
+        {
+            std::cerr<<"Wrong path given"<<std::endl;
+            // PathUtils a gasit o problema la path given
+
+            // TO DO: Logging System
+            this->close_gracefully();
+            return;
+        }
+
+        if(file_fd==-1)
+        {
+            int file_fd=open(optional_path->c_str(),O_RDONLY);
+            //open gives us the fd
+            if(file_fd==-1)
+            {
+                throw std::system_error(errno, std::generic_category(), "Failed to open file");
+            }
+        }
+
+        file_size=File::get_file_size(optional_path, file_fd);
+
+        if(file_size==0)
+        {
+            this->close_gracefully();
+            return;
+        }
+
+
+        size_t sent=0; // ca sa dam track sa trimitem tot mesajul, also tre sa fie acelasi tip ca size
+        ssize_t size=0;
+
+        // we assemble the header: a standard 200 OK message,
+        //but the Content Length needs to be the size from FileMapper
+        // and Content Type is from the extension, with the help of MimeTypes class
+
+        std::string header;
+        header.reserve(256);
+        header = 
+            "HTTP/1.1 200 OK\r\n"
+            "Content-Type: " + std::string(MimeTypes::get_type(URI)) + "\r\n"
+            "Content-Length: " + std::to_string(file_size) + "\r\n"
+            "Connection: close\r\n\r\n";
+
+        // here we send the header first
+        while(sent<header.size() and size!=-1)
+        {
+            size=send(this->get_fd(),header.c_str()+sent,header.size()-sent,MSG_NOSIGNAL);
+            // header.c_str() e pointerul de care are nevoie functia cate primul caracter,
+            // ca sa putemm folosi std::string ; ssize_t e tipul signed al lungimii
+            // flag-ul "MSG_NOSIGNAL" ca sa nu dea SIGPIPE in caz de eroare, ci doar sa returneze 1
+
+            if(size>0)
+                sent+=size;
+        }
+
+        if(sent==header.size())
+        {
+            state_=State::SENDING_FILE;
+            header_offset=0;
+        }
+
+        if(size==-1)
+        {
+            if(errno == EAGAIN or errno == EWOULDBLOCK)
+            {
+                // if we are here this emans that the kernel send buffer is full and we need to come back to this
+                // from the epoll wait list when we get an EPOLLOUT SIGNAL
+
+                header_offset=sent;
+                if(current_events!=EPOLLIN | EPOLLET | EPOLLOUT and file_size > 0)
+                {
+                    struct epoll_event event;
+                    event.events=EPOLLIN | EPOLLET | EPOLLOUT;
+                    current_events=EPOLLIN | EPOLLET | EPOLLOUT;
+                    event.data.fd=this->get_fd();
+                    epoll_ctl(epfd, EPOLL_CTL_MOD, this->get_fd(), &event);
+                }
+                return;
+
+            }
+            else
+            {
+                std::cerr<<strerror(errno)<<". Failed to send header to client on FD: "<<this->get_fd()<<std::endl;
+            }
+        }
+    }
+
+    
+    if(state_==State::SENDING_FILE)
+    {
+
+
+        size_t sent=0;
+        ssize_t size=0;
+
+        // daca nu avem body, doar va fi sarit acest while
+        while(sent<file_size and size!=-1)
+        {
+            size=sendfile(this->get_fd(),file_fd,&send_offset,file_size - sent);
+            if(size>0)
+                sent+=size;
+        }
+
+        if(sent==file_size)
+        {
+            state_=State::CLOSED;
+            if(current_events==EPOLLIN | EPOLLET | EPOLLOUT)
+            {
+                struct epoll_event event;
+                event.events=EPOLLIN | EPOLLET;
+                current_events=EPOLLIN | EPOLLET;
+                event.data.fd=this->get_fd();
+                epoll_ctl(epfd, EPOLL_CTL_MOD, this->get_fd(), &event);
+                // cuz we finished the sending; we don't care about out events anymore
+            }
+            return;
+        }
+
+        if(size==-1)
+        {
+            if(errno == EAGAIN or errno == EWOULDBLOCK)
+            {
+                // if we are here this emans that the kernel send buffer is full and we need to come back to this
+                // from the epoll wait list when we get an EPOLLOUT SIGNAL
+
+                if(current_events!=EPOLLIN | EPOLLET | EPOLLOUT)
+                {
+                    struct epoll_event event;
+                    event.events=EPOLLIN | EPOLLET | EPOLLOUT;
+                    current_events=EPOLLIN | EPOLLET | EPOLLOUT;
+                    event.data.fd=this->get_fd();
+                    epoll_ctl(epfd, EPOLL_CTL_MOD, this->get_fd(), &event);
+                }
+                return;
+
+            }
+            else
+            {
+                std::cerr<<strerror(errno)<<". Failed to send header to client on FD: "<<this->get_fd()<<std::endl;
+            }
+        }
+
+    }
+
 }

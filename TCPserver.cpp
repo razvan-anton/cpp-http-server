@@ -1,8 +1,7 @@
 #include "TCPserver.hpp"
 #include "ConnectionState.hpp"
 
-// TO DO: for memory efficiency, we can have a small buffer pool and store 10k smaller states
-// instead of 10k big ConnectionState objects
+ConnectionState connections[MAX_CONNECTIONS+5];
 
 TCPserver::TCPserver(uint16_t port) :
     port_(port),
@@ -13,7 +12,6 @@ TCPserver::TCPserver(uint16_t port) :
     address_.sin_port = htons(port_);
     address_.sin_addr.s_addr = htonl(INADDR_ANY);
 }
-
 
 void TCPserver::start()
 {
@@ -45,7 +43,7 @@ void TCPserver::start()
     event.events=EPOLLIN | EPOLLET;
     // EPOLLIN for read events, EPOLLET for edge-triggered mode 
     //( more efficient (notifies us when smth changes), but we need to read until EAGAIN )
-    event.data.ptr=&listener_;
+    event.data.fd=listener_.get_fd();
 
     if(epoll_ctl(epoll_fd,EPOLL_CTL_ADD,listener_.get_fd(),&event)==-1) // returns -1 on error
     {
@@ -55,7 +53,7 @@ void TCPserver::start()
     std::cout<<"Server started"<<std::endl;
     while(true)
     {
-        // logic: we remove an event from the list, and if it is the listener
+        // logic: we process an event from the list, and if it is the listener
         // then we accept in a while loop all clients and process them
 
         int ready = epoll_wait(epoll_fd, evlist, MAX_EVENTS, -1); // timeout at -1 means wait until an event occurs
@@ -71,7 +69,7 @@ void TCPserver::start()
 
         for(int i=0;i<ready;i++)
         {
-            if(evlist[i].data.ptr==&listener_)
+            if(evlist[i].data.fd==listener_.get_fd())
             {
                 // accept till EAGAIN
                 while(true)
@@ -93,8 +91,14 @@ void TCPserver::start()
                             continue;
                         }
                     }
+                    else if(client_fd > MAX_CONNECTIONS)
+                    {
+                        std::cerr<<"Too many clients"<<std::endl;
+                        // TO DO: do smth else here
+                        continue;
+                    }
 
-                    process_client(client_fd);
+                    process_new_client(client_fd, epoll_fd);
                 }
             }
             else
@@ -103,14 +107,29 @@ void TCPserver::start()
                 // so we need to process it
 
                 // get the conn state, call process, and if it is still processing, add it back to epoll
-                ConnectionState * conn = static_cast <ConnectionState*>(evlist[i].data.ptr);
-                // static cast cuz .data.ptr is a void*, we need to cast it back to ConnectionState*
-                // we can assign *void = smth, but not the reverse
-
-                State state=conn->process();
-                if(state==State::ERROR or state==State::CLOSED)
+                int client_fd=evlist[i].data.fd;
+                State state=connections[(client_fd)].process();
+                if(state==State::PROCESSING or state==State::SENDING_FILE or state==State::SENDING_HEADER)
                 {
-                    std::cerr<<" Error or closed client on FD: "<<conn->get_fd()<<std::endl;
+                    connections[(client_fd)].send_response(client_fd);
+                }
+                if(state==State::CLOSED)
+                {
+                    if(epoll_ctl(epoll_fd,EPOLL_CTL_DEL,client_fd,NULL)==-1)
+                    {
+                        std::cerr<<"Error when deleting client on fd "<<client_fd<<std::endl;
+                    }
+                    close(client_fd);
+                    std::cerr<<"Closed on client on FD: "<<client_fd<<std::endl;
+                }
+                else if(state==State::ERROR or state==State::CLOSED)
+                {
+                if(epoll_ctl(epoll_fd,EPOLL_CTL_DEL,client_fd,NULL)==-1)
+                {
+                    std::cerr<<"Error when deleting client on fd "<<client_fd<<std::endl;
+                }
+                    close(client_fd);
+                    std::cerr<<" Error on client on FD: "<<client_fd<<std::endl;
                 }
                 else
                 {
@@ -118,22 +137,15 @@ void TCPserver::start()
                 }
             }
 
-
         }
 
-
-
-
     }
-
-
 }
 
-void TCPserver::process_client(int client_fd)
+void TCPserver::process_new_client(const int client_fd,const int epfd)
 {
-    // TO DO: change connection state so that it recvs until EAGAIN 
-    // TO DO: change when sending the file to send until EAGAIN
     // TO DO: add a max limit of how much to read/send per client per event
+
     if(client_fd==-1)
     {
         std::cerr<<"Invalid user: " + std::string(std::strerror(errno))
@@ -141,144 +153,42 @@ void TCPserver::process_client(int client_fd)
         return;
     }
 
-{ // -> Critical: We create a scope here, so that when We are done with processing a client
-    // all destructors are called so the socket closes automatically
+
     Socket client(client_fd);
-    client.set_non_blocking();  // cuz we use epoll
-    ConnectionState Conn(std::move(client));
+    client.set_non_blocking();  // cuz we use epoll and edge_triggered
+
+    connections[client_fd].reset();
+    connections[client_fd].init(std::move(client));
+
     // each user has its onw "ConnectionState" so we can have multiple users on a TCP server
     // de aici vom folosi metodele din ConnectionState pentru a lua ce avem nevoie din Request
     // dar asta dupa ce requestul va fi ok
-    
-    while(true)
+
+
+    State state=connections[client_fd].process();
+
+    if(state==State::PROCESSING)
     {
-        State state=Conn.process();
-
-
-        int fd=Conn.get_fd();
-        if(state==State::PROCESSING)
+        //send an HTTP 200 OK
+        connections[client_fd].send_response(epfd);
+    }
+    else if(state==State::ERROR)
+    {
+        if(epoll_ctl(epfd,EPOLL_CTL_DEL,client_fd,NULL)==-1)
         {
-            //send an HTTP 200 OK
-            state=State::SENDING_RESPONSE;
-
-            auto URI=Conn.getURI();
-            std::optional<std::string> optional_path=File::get_abs_path(URI);
-            if(!optional_path)
-            {
-                std::cerr<<"Wrong path given"<<std::endl;
-                // PathUtils a gasit o problema la path given
-
-                // TO DO: Logging System
-                Conn.close_gracefully();
-
-                break;
-            }
-
-            try{
-                //main block, intr-un try ca pot fi multe erori aici
-                // pass la *optional_path ca asa se acceseaza string-ul cand apar erori
-                std::cerr << "[DEBUG] Attempting to map file..." << std::endl;
-
-                FileMapper mapper(*optional_path);
-
-                std::cerr << "[DEBUG] Requested Path: " << (optional_path ? *optional_path : "NULL") << std::endl;
-
-                size_t sent=0; // ca sa dam track sa trimitem tot mesajul, also tre sa fie acelasi tip ca size
-                ssize_t size=0;
-
-                // we assemble the header: a standard 200 OK message,
-                //but the Content Length needs to be the size from FileMapper
-                // and Content Type is from the extension, with the help of MimeTypes class
-
-                std::string header;
-                header.reserve(256);
-                header = 
-                    "HTTP/1.1 200 OK\r\n"
-                    "Content-Type: " + std::string(MimeTypes::get_type(URI)) + "\r\n"
-                    "Content-Length: " + std::to_string(mapper.get_size()) + "\r\n"
-                    "Connection: close\r\n\r\n";
-
-                // here we send the header first
-                while(sent<header.size() and size!=-1)
-                {
-                    size=send(Conn.get_fd(),header.c_str()+sent,header.size()-sent,MSG_NOSIGNAL);
-                    // header.c_str() e pointerul de care are nevoie functia cate primul caracter,
-                    // ca sa putemm folosi std::string ; ssize_t e tipul signed al lungimii
-                    // flag-ul "MSG_NOSIGNAL" ca sa nu dea SIGPIPE in caz de eroare, ci doar sa returneze 1
-
-                    if(size<=0)
-                    {
-                        std::cerr<<"Temporary error while sending header on FD: "<<fd<<std::endl;
-                    }
-                    else if(size>0)
-                        sent+=size;
-                }
-                
-                if(size==-1)
-                {
-                    std::cerr<<strerror(errno)<<". Failed to send header to client on FD: "<<fd<<std::endl;
-                    // folosim cerr ptc spre deosebire de cout daca avem vreo problema va afisa tot
-                }
-                else
-                {
-                    // if we are here, we have successfully sent the header
-                    //now we send the body, with the same logic
-
-                    size_t sent=0;
-                    ssize_t size=0;
-
-                    // daca nu avem body, doar va fi sarit acest while
-                    while(sent<mapper.get_size() and size!=-1)
-                    {
-                        size=send(fd,static_cast<const uint8_t*>(mapper.get_data()) + sent,
-                        mapper.get_size()-sent,MSG_NOSIGNAL);
-                        //static cast entru ca data_ e void * type, trebuie char * type pt arithmetic 
-                        //dar am folosit uint8_t pentru ca nu e chiar char, e raw data,
-                        //plus ca asa format sa fie unsigned
-                        // flag-ul "MSG_NOSIGNAL" ca sa nu dea SIGPIPE in caz de eroare, ci doar sa returneze 1
-
-                        if(size<=0)
-                        {
-                            std::cerr<<"Temporary error while sending body on FD: "<<fd<<std::endl;
-                        }
-                        else if(size>0)
-                            sent+=size;
-                    }
-                
-                    if(size==-1)
-                    {
-                        std::cerr<<strerror(errno)<<". Failed to send body to client on FD: "<<fd<<std::endl;
-                    }
-                    else
-                    {
-                        std::cerr<<"Successfully sent body to client on FD: "<<fd<<std::endl;
-                    }
-                }
-
-                continue;
-            }
-            catch(const std::exception& e){
-                // daca suntem aici, a fost o problema la FileMapper
-                std::cerr << "[ERROR]"<<e.what() << std::endl;
-
-                Conn.close_gracefully();
-
-                break;
-            }
-
-
-
+            std::cerr<<"Error when deleting client on fd "<<client_fd<<std::endl;
         }
-        else if(state==State::READING_BODY or state==State::READING_HEADERS)
+        close(client_fd);
+        std::cerr<<"Error on client on FD: "<<client_fd<<std::endl;
+    }
+    else if(state==State::CLOSED)
+    {
+        if(epoll_ctl(epfd,EPOLL_CTL_DEL,client_fd,NULL)==-1)
         {
-            continue; // recv again, for now; TO DO
+            std::cerr<<"Error when deleting client on fd "<<client_fd<<std::endl;
         }
-        else if(state==State::ERROR or state==State::CLOSED)
-        {
-            std::cerr<<"Error or closed client on FD: "<<fd<<std::endl;
-            break;
-        }
+        close(client_fd);
+        std::cerr<<"Closed client on FD: "<<client_fd<<std::endl;
     }
     
-}
 }
