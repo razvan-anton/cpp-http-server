@@ -61,10 +61,9 @@ std::optional<std::string> get_abs_path(std::string_view &s)
     return std::nullopt;
 }
 
-size_t get_file_size(std::optional<std::string> path, const int file_fd)
+size_t get_file_size(const int file_fd)
 {
     int size;
-    const char* c_path = path->c_str(); // open needs a const char*
 
 
     struct stat statbuf; // this will get filled by fstat with all the file's data

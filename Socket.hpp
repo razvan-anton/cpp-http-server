@@ -22,13 +22,15 @@ public:
             throw std::invalid_argument("File descriptor must be positive");
     }
 
-    Socket() : fd_(socket(AF_INET, SOCK_STREAM, 0))   // Constructor 2
-    {
-        if(fd_<0)
-        {
-            throw std::runtime_error("Failed to create socket resource"); 
-        }
-    }
+    Socket() : fd_(-1){};
+    // Socket() : fd_(socket(AF_INET, SOCK_STREAM, 0))   // Constructor 2
+    // {
+    //     if(fd_<0)
+    //     {
+    //         throw std::runtime_error("Failed to create socket resource"); 
+    //     }
+    // }
+    // move this logic only for the listener so that this Constructor won't be called for every ConnState
 
     int get_fd() const
     {

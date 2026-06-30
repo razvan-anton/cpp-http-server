@@ -5,7 +5,7 @@ ConnectionState connections[MAX_CONNECTIONS+5];
 
 TCPserver::TCPserver(uint16_t port) :
     port_(port),
-    listener_(),
+    listener_(Socket(socket(AF_INET, SOCK_STREAM, 0))),
     address_{}{
     //htons converts the data to Network byte order ( from Little Endian to Big Endian )
     address_.sin_family = AF_INET;
@@ -55,7 +55,7 @@ void TCPserver::start()
     {
         // logic: we process an event from the list, and if it is the listener
         // then we accept in a while loop all clients and process them
-
+        std::cerr<<"DEBUG: Looking inside epoll wait"<<std::endl;
         int ready = epoll_wait(epoll_fd, evlist, MAX_EVENTS, -1); // timeout at -1 means wait until an event occurs
         // epoll_wait returns the number of events that are ready, and fills the evlist with those events
         if(ready==-1)
@@ -74,10 +74,10 @@ void TCPserver::start()
                 // accept till EAGAIN
                 while(true)
                 {
+                    std::cerr<<"DEBUG: New Client"<<std::endl;
                     int client_fd=accept(listener_.get_fd(),NULL,NULL);
                     // currently set to NULL cuz we don't care about the user that connects, for now
                     // it returns a new fd of the person that connected;
-
                     if(client_fd==-1)
                     {
                         if (errno == EAGAIN || errno == EWOULDBLOCK) //we have accepted all clients, we can break
@@ -107,6 +107,7 @@ void TCPserver::start()
                 // so we need to process it
 
                 // get the conn state, call process, and if it is still processing, add it back to epoll
+                std::cerr<<"DEBUG: New event on already accepted client"<<std::endl;
                 int client_fd=evlist[i].data.fd;
                 State state=connections[(client_fd)].process();
                 if(state==State::PROCESSING or state==State::SENDING_FILE or state==State::SENDING_HEADER)
@@ -145,15 +146,12 @@ void TCPserver::start()
 void TCPserver::process_new_client(const int client_fd,const int epfd)
 {
     // TO DO: add a max limit of how much to read/send per client per event
-
     if(client_fd==-1)
     {
         std::cerr<<"Invalid user: " + std::string(std::strerror(errno))
             + ". Moving to the next one"<<std::endl;
         return;
     }
-
-
     Socket client(client_fd);
     client.set_non_blocking();  // cuz we use epoll and edge_triggered
 
@@ -166,10 +164,11 @@ void TCPserver::process_new_client(const int client_fd,const int epfd)
 
 
     State state=connections[client_fd].process();
-
+    std::cerr<<"DEBUG: Called .process"<<std::endl;
     if(state==State::PROCESSING)
     {
         //send an HTTP 200 OK
+        std::cerr<<"DEBUG: Calling .send_response"<<std::endl;
         connections[client_fd].send_response(epfd);
     }
     else if(state==State::ERROR)

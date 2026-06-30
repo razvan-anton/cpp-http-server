@@ -52,13 +52,12 @@ private:
     State state_;
     Http::Request request_;
     size_t offset_;    // tracks how much data we have ( using recv it may arrive in chunks )
-    bool is_active;
-
     size_t header_offset;
-    uint32_t current_events;
     size_t file_size;
-    off_t send_offset;
     int file_fd;
+    uint32_t current_events;
+    bool is_active;
+    off_t send_offset;
 
     void parse_request();
 };

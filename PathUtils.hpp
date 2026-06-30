@@ -11,6 +11,6 @@ namespace File{
 
     std::optional<std::string> get_abs_path(std::string_view &s);
 
-    size_t get_file_size(std::optional<std::string> path, const int file_fd);
+    size_t get_file_size(const int file_fd);
 
 }

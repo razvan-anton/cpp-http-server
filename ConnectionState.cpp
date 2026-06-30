@@ -31,7 +31,7 @@ void ConnectionState::reset()
     is_active=1;
     request_.reset();
     state_=State::READING_HEADERS;
-    uint32_t current_events = EPOLLIN | EPOLLET;
+    current_events = EPOLLIN | EPOLLET;
     // no need to reset socket cuz fd's are closed in the TCPserver side
 }
 
@@ -70,7 +70,6 @@ State ConnectionState::process()
         while(offset_ < sizeof(buffer_))
         {
             ssize_t len=recv(socket_.get_fd(), buffer_ + offset_, sizeof(buffer_) - offset_, 0);
-
             //citim din socket_, bagam rez in buffer incepand de la offset,
             // citim pentru o lungime maxima de sizeof(buffer) - offset_ ( adica cat a ramas din buffer )
             // no flags
@@ -100,7 +99,7 @@ State ConnectionState::process()
             {
                 offset_+=len;
                 // incepem sa ne uitam de la inceputul la bytes
-
+                std::cerr<<"DEBUG: Read inside ConnectionState, len>0"<<std::endl;
                 parse_request();
 
                 return state_;
@@ -129,6 +128,7 @@ void ConnectionState::parse_request()
 {
     while(state_==State::READING_BODY or state_==State::READING_HEADERS)
     {
+        std::cerr<<"DEBUG: Parsing Request"<<std::endl;
         std::string_view view(buffer_,offset_);
 
         if(state_==State::READING_HEADERS)
@@ -208,6 +208,10 @@ bool ConnectionState::active()
 
 void ConnectionState::send_response(const int epfd)
 {
+    if( state_ == State::PROCESSING)
+        state_=State::SENDING_HEADER;
+    // DEBUG: ADDED THIS
+
     if( state_ == State::SENDING_HEADER)
     {
         auto URI = this->getURI();
@@ -224,7 +228,7 @@ void ConnectionState::send_response(const int epfd)
 
         if(file_fd==-1)
         {
-            int file_fd=open(optional_path->c_str(),O_RDONLY);
+            file_fd=open(optional_path->c_str(),O_RDONLY);
             //open gives us the fd
             if(file_fd==-1)
             {
@@ -232,10 +236,11 @@ void ConnectionState::send_response(const int epfd)
             }
         }
 
-        file_size=File::get_file_size(optional_path, file_fd);
+        file_size=File::get_file_size(file_fd);
 
-        if(file_size==0)
+        if(file_size<=0)
         {
+            std::cerr<<"File size is 0 or negative"<<std::endl;
             this->close_gracefully();
             return;
         }
@@ -270,9 +275,11 @@ void ConnectionState::send_response(const int epfd)
 
         if(sent==header.size())
         {
+            std::cerr<<"DEBUG: header Sent to client"<<std::endl;
             state_=State::SENDING_FILE;
             header_offset=0;
         }
+
 
         if(size==-1)
         {
@@ -281,8 +288,10 @@ void ConnectionState::send_response(const int epfd)
                 // if we are here this emans that the kernel send buffer is full and we need to come back to this
                 // from the epoll wait list when we get an EPOLLOUT SIGNAL
 
+                std::cerr<<"DEBUG: Send buffer is full. Add to wait list and come back later"<<std::endl;
+
                 header_offset=sent;
-                if(current_events!=EPOLLIN | EPOLLET | EPOLLOUT and file_size > 0)
+                if(current_events!= (EPOLLIN | EPOLLET | EPOLLOUT) and file_size > 0)
                 {
                     struct epoll_event event;
                     event.events=EPOLLIN | EPOLLET | EPOLLOUT;
@@ -303,7 +312,7 @@ void ConnectionState::send_response(const int epfd)
     
     if(state_==State::SENDING_FILE)
     {
-
+        std::cerr<<"DEBUG: Sending file to client"<<std::endl;
 
         size_t sent=0;
         ssize_t size=0;
@@ -319,7 +328,7 @@ void ConnectionState::send_response(const int epfd)
         if(sent==file_size)
         {
             state_=State::CLOSED;
-            if(current_events==EPOLLIN | EPOLLET | EPOLLOUT)
+            if(current_events==(EPOLLIN | EPOLLET | EPOLLOUT))
             {
                 struct epoll_event event;
                 event.events=EPOLLIN | EPOLLET;
@@ -328,6 +337,7 @@ void ConnectionState::send_response(const int epfd)
                 epoll_ctl(epfd, EPOLL_CTL_MOD, this->get_fd(), &event);
                 // cuz we finished the sending; we don't care about out events anymore
             }
+            std::cerr<<"DEBUG: File sent"<<std::endl;
             return;
         }
 
@@ -337,8 +347,8 @@ void ConnectionState::send_response(const int epfd)
             {
                 // if we are here this emans that the kernel send buffer is full and we need to come back to this
                 // from the epoll wait list when we get an EPOLLOUT SIGNAL
-
-                if(current_events!=EPOLLIN | EPOLLET | EPOLLOUT)
+                std::cerr<<"DEBUG: Send buffer is full. Add to wait list and come back later to send file"<<std::endl;
+                if(current_events!=(EPOLLIN | EPOLLET | EPOLLOUT))
                 {
                     struct epoll_event event;
                     event.events=EPOLLIN | EPOLLET | EPOLLOUT;
@@ -351,7 +361,8 @@ void ConnectionState::send_response(const int epfd)
             }
             else
             {
-                std::cerr<<strerror(errno)<<". Failed to send header to client on FD: "<<this->get_fd()<<std::endl;
+                std::cerr<<strerror(errno)<<". Failed to send file to client on FD: "<<this->get_fd()<<std::endl;
+                std::cerr<<"DEBUG: Client fd is "<<this->get_fd()<<", file fd is "<<file_fd<<" and file size is "<<file_size<<std::endl;
             }
         }
 
