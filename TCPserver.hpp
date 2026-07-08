@@ -17,11 +17,15 @@
 class TCPserver
 {
 public:
+    int epoll_fd_;
+
     explicit TCPserver(uint16_t port);
 
     void start();
 
-    void process_new_client(const int client_fd, const int epoll_fd);
+    void process_new_client(const int client_fd);
+
+    void process_client(const int client_fd);
 
 private:
     uint16_t port_;
