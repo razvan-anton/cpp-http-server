@@ -1,6 +1,6 @@
 # Variables
 CXX = g++
-CXXFLAGS = -Wall -Wextra -Werror -g -std=c++17
+CXXFLAGS = -Wall -Wextra -Werror -g -std=c++20 -O1 -fsanitize=thread
 SRCS = $(wildcard *.cpp) # all .cpp files go here
 NAME = my_server
 
