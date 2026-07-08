@@ -53,6 +53,11 @@ public:
         }
     }
 
+    void deactivate_socket_without_closing()
+    {
+        fd_=-1;
+    }
+
     // TO DO: de citit despre asta
     // 2. Move Constructor (Transferring ownership)
     Socket(Socket&& other) noexcept : fd_(other.fd_)  // noexcept pentru//
