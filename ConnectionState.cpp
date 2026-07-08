@@ -32,9 +32,17 @@ void ConnectionState::reset()
     request_.reset();
     state_=State::READING_HEADERS;
     current_events = EPOLLIN | EPOLLET;
-    // no need to reset socket cuz fd's are closed in the TCPserver side
+    send_offset=0;
+    //socket_=Socket(); // reset socket
 }
 
+void ConnectionState::deactivate()
+{
+    is_active=0;
+    state_=State::CLOSED;
+    close(get_fd());
+    socket_.deactivate_socket_without_closing();
+}
 
 
 State ConnectionState::process()
@@ -142,7 +150,6 @@ void ConnectionState::parse_request()
             }
             else if (state == Http::ParseState::INCOMPLETE)
             {
-                state_=State::READING_HEADERS;
                 break;
             }
             else if (state == Http::ParseState::COMPLETE)
@@ -168,12 +175,14 @@ void ConnectionState::parse_request()
             }
             else
             {
-                state_=State::PROCESSING;
                 if(request_.content_length < 0)
                 {
                     state_=State::ERROR;
                     break;
                 }
+                // if COMPLETE:
+                state_=State::PROCESSING;
+                send_response();
             }               
         }
     }
@@ -206,7 +215,7 @@ bool ConnectionState::active()
     return is_active;
 }
 
-void ConnectionState::send_response(const int epfd)
+void ConnectionState::send_response()
 {
     if( state_ == State::PROCESSING)
         state_=State::SENDING_HEADER;
@@ -312,22 +321,26 @@ void ConnectionState::send_response(const int epfd)
     
     if(state_==State::SENDING_FILE)
     {
-        std::cerr<<"DEBUG: Sending file to client"<<std::endl;
 
         size_t sent=0;
         ssize_t size=0;
 
         // daca nu avem body, doar va fi sarit acest while
-        while(sent<file_size and size!=-1)
+        std::cerr<<"DEBUG: send_offset, file_size: "<<send_offset<<" "<<file_size<<std::endl;
+        while((size_t)send_offset<file_size and size!=-1)
         {
-            size=sendfile(this->get_fd(),file_fd,&send_offset,file_size - sent);
+            size=sendfile(this->get_fd(),file_fd,&send_offset,file_size - (size_t)send_offset);
             if(size>0)
                 sent+=size;
+
+            if(size==0)
+                break;
         }
 
         if(sent==file_size)
         {
             state_=State::CLOSED;
+            //change flags in case we might get a second connection; ( only if they send Connection: keep-alive)
             if(current_events==(EPOLLIN | EPOLLET | EPOLLOUT))
             {
                 struct epoll_event event;
@@ -361,6 +374,7 @@ void ConnectionState::send_response(const int epfd)
             }
             else
             {
+                state_=State::ERROR;
                 std::cerr<<strerror(errno)<<". Failed to send file to client on FD: "<<this->get_fd()<<std::endl;
                 std::cerr<<"DEBUG: Client fd is "<<this->get_fd()<<", file fd is "<<file_fd<<" and file size is "<<file_size<<std::endl;
             }

@@ -26,6 +26,10 @@ enum class State{
 
 class ConnectionState{
 public:
+
+    inline static int epfd; // initialised only once, set from TCPserver.cpp
+    // inline: to let the linker know that all instances of epfd refer to the same variable
+
     explicit ConnectionState(Socket&& sock);    // Socket&& because ConnectionState is taking ownership
 
     ConnectionState();
@@ -44,7 +48,9 @@ public:
 
     void init(Socket&& sock);
 
-    void send_response(const int epfd);
+    void deactivate();
+
+    void send_response();
 
 private:
     Socket socket_;
