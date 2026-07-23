@@ -23,7 +23,7 @@ std::optional<std::string> get_abs_path(std::string_view &s)
 
     if (!std::filesystem::exists(target))
     {
-        std::cerr<<"DEBUG: FILE doesn't exist at path "<<target<<std::endl;
+        //std::cerr<<"DEBUG: FILE doesn't exist at path "<<target<<std::endl;
         return std::nullopt;
     }
 
@@ -35,7 +35,7 @@ std::optional<std::string> get_abs_path(std::string_view &s)
         // canonical makes it so it is the same on all machines, also removes the /..
         // that can be used to access unwanted directories
 
-        std::cerr << "[DEBUG] System tries to find file at: " << full_path << std::endl;
+        //std::cerr << "[DEBUG] System tries to find file at: " << full_path << std::endl;
 
         auto [root_it, target_it] = std::mismatch(root.begin(), root.end(), full_path.begin(), full_path.end());
         // a filesystem object is like a vector of strings
@@ -52,11 +52,11 @@ std::optional<std::string> get_abs_path(std::string_view &s)
         }
 
     } catch(...){  // ... means catch all
-        std::cerr << "[DEBUG] Error caught. System tried to find file at: " << target << std::endl;
+        //std::cerr << "[DEBUG] Error caught. System tried to find file at: " << target << std::endl;
         return std::nullopt;
     }
     
-    std::cerr << "[DEBUG] System tried to find file at: " << target << std::endl;
+    //std::cerr << "[DEBUG] System tried to find file at: " << target << std::endl;
     // in case the abs path is malicious/wrong/file doesn't exist
     return std::nullopt;
 }

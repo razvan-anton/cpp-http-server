@@ -2,11 +2,14 @@
 #define ConnectionState_HPP
 
 #include <sys/epoll.h>
+#include <sys/syscall.h>
+
 #include "Socket.hpp"
 #include <cstddef> //for the type size_t ( for unsigned sizes), it is also portable
 #include <sys/stat.h>   // for fstat
 #include <fcntl.h>  // for open
 #include <sys/sendfile.h> // for sendfile
+#include <mutex>
 
 
 #include "PathUtils.hpp"
@@ -51,6 +54,14 @@ public:
     void deactivate();
 
     void send_response();
+
+    uint32_t get_events();
+
+    void modify_events(uint32_t events); // sets bool to 1
+
+    State get_state();
+
+    std::mutex mtx;
 
 private:
     Socket socket_;
