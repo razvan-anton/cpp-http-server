@@ -38,16 +38,13 @@ void TCPserver::start()
     }
     ConnectionState::epfd=epoll_fd_;
 
-    struct epoll_event evlist[MAX_EVENTS]; // event list 
-    // TO DO: stress test for 1024/2048 MAX_EVENTS
-    struct epoll_event event; // the event we are adding  
+    struct epoll_event evlist[MAX_EVENTS]; // event list ( interest list )
+    struct epoll_event listener_event; // the event we are adding  
 
-    event.events=EPOLLIN | EPOLLET;
-    // EPOLLIN for read events, EPOLLET for edge-triggered mode 
-    //( more efficient (notifies us when smth changes), but we need to read until EAGAIN )
-    event.data.fd=listener_.get_fd();
+    listener_event.events=EPOLLIN | EPOLLET;
+    listener_event.data.fd=listener_.get_fd();
 
-    if(epoll_ctl(epoll_fd_,EPOLL_CTL_ADD,listener_.get_fd(),&event)==-1) // returns -1 on error
+    if(epoll_ctl(epoll_fd_,EPOLL_CTL_ADD,listener_.get_fd(),&listener_event)==-1) // returns -1 on error
     {
         throw std::runtime_error("Failed to add listener socket to epoll instance: " + std::string(std::strerror(errno)));
     }
@@ -57,7 +54,7 @@ void TCPserver::start()
     {
         // logic: we process an event from the list, and if it is the listener
         // then we accept in a while loop all clients and process them
-        std::cerr<<"DEBUG: Looking inside epoll wait"<<std::endl;
+        //std::cerr<<"DEBUG: Looking inside epoll wait"<<std::endl;
         int ready = epoll_wait(epoll_fd_, evlist, MAX_EVENTS, -1); // timeout at -1 means wait until an event occurs
         // epoll_wait returns the number of events that are ready, and fills the evlist with those events
         if(ready==-1)
@@ -76,7 +73,7 @@ void TCPserver::start()
                 // accept till EAGAIN
                 while(true)
                 {
-                    std::cerr<<"DEBUG: New Client"<<std::endl;
+                    //std::cerr<<"DEBUG: New Client"<<std::endl;
                     int client_fd=accept(listener_.get_fd(),NULL,NULL);
                     // currently set to NULL cuz we don't care about the user that connects, for now
                     // it returns a new fd of the person that connected;
@@ -95,12 +92,45 @@ void TCPserver::start()
                     }
                     else if(client_fd > MAX_CONNECTIONS)
                     {
+
                         std::cerr<<"Too many clients"<<std::endl;
                         // TO DO: do smth else here
                         continue;
                     }
 
-                    process_new_client(client_fd);
+                    //fprintf(stderr, "[MAIN] 🟢 ACCEPTED fd %d\n", client_fd);
+
+                    // logic from old process_new_client moved here
+
+                    std::scoped_lock lock(connections[client_fd].mtx);
+
+                    Socket client(client_fd);
+                    client.set_non_blocking();  // cuz we use epoll and edge_triggered
+
+                    connections[client_fd].reset();
+                    connections[client_fd].init(std::move(client));
+                    // each user has its onw "ConnectionState" so we can have multiple users on a TCP server
+                    // de aici vom folosi metodele din ConnectionState pentru a lua ce avem nevoie din Request
+                    // dar asta dupa ce requestul va fi ok
+
+                    struct epoll_event event; // the event we are adding  
+                    event.events=EPOLLIN | EPOLLET | EPOLLONESHOT;
+                    // EPOLLIN for read events, 
+                    //EPOLLET for edge-triggered mode  
+                    //( more efficient (notifies us when smth changes), but we need to read until EAGAIN )
+                    // EPOLLONESHOT soo that when thread A process a client and more data arrives
+                    //Thread B won't pick it up from the ready list
+                    // so basically do not have two threads working the same client from different ends
+                    
+                    event.data.fd=client_fd;
+
+                    if(epoll_ctl(epoll_fd_,EPOLL_CTL_ADD,client_fd,&event)==-1)
+                    {
+                        // std::cerr<<"DEBUG: File descritpr that failed to be added to interest list: "<<client_fd<<std::endl;
+                        // std::cerr<<"DEBUG: epoll fd: "<<epoll_fd_<<std::endl;
+                        throw std::runtime_error("Failed to add new socket to epoll instance: " + std::string(std::strerror(errno)));
+                    }
+
                 }
             }
             else
@@ -109,10 +139,10 @@ void TCPserver::start()
                 // so we need to process it
 
                 // get the conn state, call process, and if it is still processing, add it back to epoll
-                std::cerr<<"DEBUG: New event on already accepted client"<<std::endl;
+                //std::cerr<<"DEBUG: New event on already accepted client"<<std::endl;
                 int client_fd=evlist[i].data.fd;
 
-                process_client(client_fd);
+                enQ_client(client_fd);
             }
 
         }
@@ -120,71 +150,60 @@ void TCPserver::start()
     }
 }
 
-void TCPserver::process_new_client(const int client_fd)
-{
-    // TO DO: add a max limit of how much to read/send per client per event
-    std::cerr<<"DEBUG: New client being processed on fd: "<<client_fd<<std::endl;
-    if(client_fd==-1)
-    {
-        std::cerr<<"Invalid user: " + std::string(std::strerror(errno))
-            + ". Moving to the next one"<<std::endl;
-        return;
-    }
-    Socket client(client_fd);
-    client.set_non_blocking();  // cuz we use epoll and edge_triggered
-
-    connections[client_fd].reset();
-    connections[client_fd].init(std::move(client));
-
-    //add to the epoll interest list:
-    struct epoll_event event; // the event we are adding  
-
-    event.events=EPOLLIN | EPOLLET;
-    // EPOLLIN for read events, EPOLLET for edge-triggered mode 
-    //( more efficient (notifies us when smth changes), but we need to read until EAGAIN )
-    event.data.fd=client_fd;
-
-    if(epoll_ctl(epoll_fd_,EPOLL_CTL_ADD,client_fd,&event)==-1)
-    {
-        std::cerr<<"DEBUG: File descritpr that failed to be added to interest list: "<<client_fd<<std::endl;
-        std::cerr<<"DEBUG: epoll fd: "<<epoll_fd_<<std::endl;
-        throw std::runtime_error("Failed to add new socket to epoll instance: " + std::string(std::strerror(errno)));
-    }
-
-
-    // each user has its onw "ConnectionState" so we can have multiple users on a TCP server
-    // de aici vom folosi metodele din ConnectionState pentru a lua ce avem nevoie din Request
-    // dar asta dupa ce requestul va fi ok
-
-    process_client(client_fd);
-}
-
 void TCPserver::process_client(const int client_fd)
 {
+    std::scoped_lock lock(connections[client_fd].mtx);
     State state=connections[client_fd].process();
-    std::cerr<<"DEBUG: Called .process"<<std::endl;
+    //std::cerr<<"DEBUG: Called .process"<<std::endl;
     if(state==State::PROCESSING or state==State::SENDING_FILE or state==State::SENDING_HEADER)
     {
-        // if the first send didn't send everything, we have to call send again
-        std::cerr<<"DEBUG: Calling .send_response AGAIN"<<std::endl;
         connections[client_fd].send_response();
-    }
-    else if(state==State::ERROR)
-    {
-        if(epoll_ctl(epoll_fd_,EPOLL_CTL_DEL,client_fd,NULL)==-1)
+        state=connections[client_fd].get_state();
+        if((state!=State::ERROR and state!=State::CLOSED ))
         {
-            std::cerr<<"Error when deleting client on fd "<<client_fd<<std::endl;
+            //ctl_mod here
+            struct epoll_event event;
+            event.events=connections[client_fd].get_events();
+            epoll_ctl(epoll_fd_, EPOLL_CTL_MOD, client_fd, &event);
         }
+
+        // if state diferit de error sau closed, ii adaugam EPOLLOUT flag
+    }
+
+    //std::cerr<<"DEBUG: State is "<<static_cast<int>(state)<<std::endl;
+
+    if(state==State::ERROR)
+    {
         connections[client_fd].deactivate();
         std::cerr<<"Error on client on FD: "<<client_fd<<std::endl;
+        if(epoll_ctl(epoll_fd_,EPOLL_CTL_DEL,client_fd,NULL)==-1)
+        {
+            //check for is_new cuz we can't delete something we didn;t add
+            std::cerr<<"Error when deleting client on fd "<<client_fd<<std::endl;
+        }
+        // pid_t tid = syscall(SYS_gettid);
+        // fprintf(stderr, "[THREAD %d] ❌ CLOSING fd %d ( error )\n", tid, client_fd);
+        close(client_fd);
+
     }
-    else if(state==State::CLOSED)
+    if(state==State::CLOSED)
     {
+        connections[client_fd].deactivate();
+        //std::cerr<<"DEBUG: Closing client on FD: "<<client_fd<<std::endl;
         if(epoll_ctl(epoll_fd_,EPOLL_CTL_DEL,client_fd,NULL)==-1)
         {
             std::cerr<<"Error when deleting client on fd "<<client_fd<<std::endl;
         }
-        connections[client_fd].deactivate();
-        std::cerr<<"Closed client on FD: "<<client_fd<<std::endl;
+        // pid_t tid = syscall(SYS_gettid);
+        // fprintf(stderr, "[THREAD %d] ❌ CLOSING fd %d ( closed normally )\n", tid, client_fd);
+        close(client_fd);
+
     }
+}
+
+void TCPserver::enQ_client(int client_fd)
+{
+    pool.addTask({ [this, client_fd]() { 
+        this->process_client(client_fd); 
+    } });
 }

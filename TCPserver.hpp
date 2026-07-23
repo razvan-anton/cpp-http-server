@@ -2,7 +2,9 @@
 #define TCP_server_HPP
 
 #include "Socket.hpp"
+#include "threadPool.hpp"
 
+#include <sys/syscall.h>
 
 #include <string_view>
 #include <netinet/in.h>
@@ -23,14 +25,15 @@ public:
 
     void start();
 
-    void process_new_client(const int client_fd);
-
     void process_client(const int client_fd);
+
+    void enQ_client(int client_fd);
 
 private:
     uint16_t port_;
     Socket listener_;
     struct sockaddr_in address_{};
+    ThreadPool pool;
 
 };
 
