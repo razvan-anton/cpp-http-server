@@ -9,7 +9,7 @@
 #include <iostream> //for cout on debugging
 
 namespace Http{
-    typedef struct{
+    struct Request{
         ssize_t content_length;  // signed ca sa punem -1 pana il gasim
         size_t header_length;
 
@@ -30,7 +30,7 @@ namespace Http{
             content_length = -1;
             header_length = 0;
         }
-    } Request;
+    };
 
     enum class ParseState{
         COMPLETE,
