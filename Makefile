@@ -1,13 +1,16 @@
-# Variables
-CXX = g++
-CXXFLAGS = -Wall -Wextra -Werror -Wshadow -std=c++20 -O3 #-O1 -fsanitize=thread
-SRCS = $(wildcard *.cpp) # all .cpp files go here
 NAME = my_server
+SRCS = $(wildcard *.cpp)
+OBJS = $(SRCS:.cpp=.o)
+CXXFLAGS = -Wall -Wextra -Werror -Wshadow -std=c++20 -O3
 
-# The "all" rule - what happens when you just type 'make'
-all:
-	$(CXX) $(CXXFLAGS) $(SRCS) -o $(NAME)
+# 1. Linking Stage
+$(NAME): $(OBJS)
+	$(CXX) $(OBJS) -o $(NAME)
 
-# The "clean" rule - to delete the executable
-clean:
-	rm -f $(NAME)
+# 2. Compilation Stage (Pattern Rule)
+%.o: %.cpp
+	$(CXX) $(CXXFLAGS) -c $< -o $@
+
+.PHONY: all clean
+clean: 
+	rm -f $(NAME) $(OBJS)
