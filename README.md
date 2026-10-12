@@ -50,12 +50,19 @@ make
 ./my_server
 ```
 
-```test1
+Test1: Basic HTTP Connection
+```bash
 curl http://localhost:8080/index.html
 ```
 
-```test2(open in broswer http://localhost:8080 )
+Test2: ( Separate Terminal / open a browser tab at http://localhost:8080 )
+```bash
 curl http://localhost:8080/cat.jpg
+```
+
+Test3: Simulate a slow client sending half an HTTP header, waiting 5 seconds, and sending the rest:
+```bash
+(printf "GET /index.html HTTP/1.1\r\nHost: localhost\r\n"; sleep 5; printf "\r\n") | nc localhost 8080
 ```
 
 ## Benchmarks
