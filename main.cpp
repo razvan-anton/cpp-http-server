@@ -1,8 +1,10 @@
 #include "TCPserver.hpp"
 #include <iostream>
 #include <stdexcept>
+#include <signal.h>
 
 int main() {
+    signal(SIGPIPE, SIG_IGN);
     try {
         uint16_t port = 8080;
 
