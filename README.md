@@ -55,7 +55,7 @@ Test1: Basic HTTP Connection
 curl -i http://localhost:8080/index.html
 ```
 
-Test2: ( Check image / open a browser tab at http://localhost:8080/cat.jpg )
+Test2: ( New Terminal and Open downloaded file OR open a browser tab at http://localhost:8080/cat.jpg )
 ```bash
 curl -s http://localhost:8080/cat.jpg -o downloaded_cat.jpg
 ls -lh downloaded_cat.jpg
