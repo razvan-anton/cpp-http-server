@@ -1,6 +1,7 @@
 #ifndef ConnectionState_HPP
 #define ConnectionState_HPP
 
+#include "tracy/Tracy.hpp"
 #include <sys/epoll.h>
 #include <sys/syscall.h>
 
@@ -61,7 +62,7 @@ public:
 
     State get_state();
 
-    std::mutex mtx;
+    TracyLockable(std::mutex, mtx);
 
 private:
     Socket socket_;

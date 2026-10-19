@@ -15,5 +15,5 @@ private:
     uint workerCnt;
     std::vector<std::jthread> workers;
 
-    void workerLoop();
+    void workerLoop(size_t id);
 };

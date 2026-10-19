@@ -1,9 +1,11 @@
 #include "Parser.hpp"
+#include "tracy/Tracy.hpp"
 
 namespace Http{   // we use namespace here so we don't type Http:: 1000 times
 
 ParseState header_parser(std::string_view view, Request &request)
 {
+    ZoneScoped;
     // First Space: Ends the Method.
     // Second Space: Ends the URI.
     // The first \r\n: Ends the Request Line (Version).
@@ -171,6 +173,7 @@ ParseState header_parser(std::string_view view, Request &request)
 
 ParseState body_parser(std::string_view view, Request & request)
 {
+    ZoneScoped;
     if(request.content_length < 0)
     {
         return ParseState::ERROR;

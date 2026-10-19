@@ -46,6 +46,7 @@ void ConnectionState::deactivate()
 
 State ConnectionState::process()
 {
+    ZoneScoped;
     if (socket_.get_fd() == -1 || state_ == State::CLOSED || state_ == State::ERROR)
     {
         return state_;
@@ -144,6 +145,7 @@ int ConnectionState::get_fd()
 
 void ConnectionState::parse_request()
 {
+    ZoneScoped;
     while(state_==State::READING_BODY or state_==State::READING_HEADERS)
     {
         //std::cerr<<"DEBUG: Parsing Request"<<std::endl;
@@ -231,6 +233,7 @@ bool ConnectionState::active()
 
 void ConnectionState::send_response()
 {
+    ZoneScoped;
     if( state_ == State::PROCESSING)
         state_=State::SENDING_HEADER;
 

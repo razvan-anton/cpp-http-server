@@ -1,11 +1,12 @@
 #include "PathUtils.hpp"
+#include "tracy/Tracy.hpp"
 
 namespace File{
 
 //
 std::optional<std::string> get_abs_path(std::string_view &s)
 {
-    
+    ZoneScoped;
 
     static const std::filesystem::path root = std::filesystem::canonical("./public");
     // this is a system call. By making it static, it is run only once ( speed increase )
@@ -63,6 +64,7 @@ std::optional<std::string> get_abs_path(std::string_view &s)
 
 size_t get_file_size(const int file_fd)
 {
+    ZoneScoped;
     int size;
 
 

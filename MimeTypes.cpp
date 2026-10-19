@@ -1,7 +1,10 @@
 #include "MimeTypes.hpp"
 #include <unordered_map>
+#include "tracy/Tracy.hpp"
+
 
 std::string_view MimeTypes::get_type(std::string_view path) {
+    ZoneScoped;
     
     // very important: this is static so it is initialised ONCE, 
     //not every time the function is called

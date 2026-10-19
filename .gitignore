@@ -3,3 +3,5 @@ a.out
 *.o
 .vscode/
 *.json
+*.tracy
+compile_commands.json
