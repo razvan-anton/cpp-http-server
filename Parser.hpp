@@ -19,6 +19,7 @@ namespace Http{
 
         int version_major;
         int version_minor;
+        bool keep_alive;
 
         void reset() 
         {
@@ -29,6 +30,7 @@ namespace Http{
             version_minor = 0;
             content_length = -1;
             header_length = 0;
+            keep_alive = true; // default for HTTP/1.1
         }
     };
 

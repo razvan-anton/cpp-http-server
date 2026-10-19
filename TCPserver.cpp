@@ -113,7 +113,12 @@ void TCPserver::start()
 
                             // logic from old process_new_client moved here
                             {
+                                
                                 ZoneScopedN("Setup Client Connection");
+
+                                int flag = 1;
+                                setsockopt(client_fd, IPPROTO_TCP, TCP_NODELAY, (char *)&flag, sizeof(int));
+                                // to tell the kernel to not wait for ACKs
 
                                 std::scoped_lock lock(connections[client_fd].mtx);
 
@@ -168,51 +173,45 @@ void TCPserver::process_client(const int client_fd)
 {
     ZoneScoped;
     std::scoped_lock lock(connections[client_fd].mtx);
+
     State state=connections[client_fd].process();
     //std::cerr<<"DEBUG: Called .process"<<std::endl;
-    if(state==State::PROCESSING or state==State::SENDING_FILE or state==State::SENDING_HEADER)
+
+    while(state==State::PROCESSING or state==State::SENDING_FILE or state==State::SENDING_HEADER)
     {
         connections[client_fd].send_response();
         state=connections[client_fd].get_state();
-        if((state!=State::ERROR and state!=State::CLOSED ))
-        {
-            //ctl_mod here
-            struct epoll_event event;
-            event.events=connections[client_fd].get_events();
-            epoll_ctl(epoll_fd_, EPOLL_CTL_MOD, client_fd, &event);
-        }
 
-        // if state diferit de error sau closed, ii adaugam EPOLLOUT flag
+        if (state == State::SENDING_FILE || state == State::SENDING_HEADER)
+        {
+            break;
+        }
+        
+        // if we have received two requests in one go, ( 1st one finihgsed, 2nd in processing)
+        // we can loop back here and start sending the rsponse for the second one
+
     }
 
     //std::cerr<<"DEBUG: State is "<<static_cast<int>(state)<<std::endl;
 
-    if(state==State::ERROR)
+    if((state!=State::ERROR and state!=State::CLOSED ))
+    {
+        //ctl_mod here
+        // if state diferit de error sau closed, ii adaugam EPOLLOUT flag
+        struct epoll_event event{};
+        event.events=connections[client_fd].get_events();
+        event.data.fd = client_fd;
+        epoll_ctl(epoll_fd_, EPOLL_CTL_MOD, client_fd, &event);
+    }
+    else
     {
         connections[client_fd].deactivate();
-        std::cerr<<"Error on client on FD: "<<client_fd<<std::endl;
         if(epoll_ctl(epoll_fd_,EPOLL_CTL_DEL,client_fd,NULL)==-1)
         {
             //check for is_new cuz we can't delete something we didn;t add
             std::cerr<<"Error when deleting client on fd "<<client_fd<<std::endl;
         }
-        // pid_t tid = syscall(SYS_gettid);
-        // fprintf(stderr, "[THREAD %d] ❌ CLOSING fd %d ( error )\n", tid, client_fd);
         close(client_fd);
-
-    }
-    if(state==State::CLOSED)
-    {
-        connections[client_fd].deactivate();
-        //std::cerr<<"DEBUG: Closing client on FD: "<<client_fd<<std::endl;
-        if(epoll_ctl(epoll_fd_,EPOLL_CTL_DEL,client_fd,NULL)==-1)
-        {
-            std::cerr<<"Error when deleting client on fd "<<client_fd<<std::endl;
-        }
-        // pid_t tid = syscall(SYS_gettid);
-        // fprintf(stderr, "[THREAD %d] ❌ CLOSING fd %d ( closed normally )\n", tid, client_fd);
-        close(client_fd);
-
     }
 }
 

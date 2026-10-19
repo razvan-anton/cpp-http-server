@@ -83,9 +83,11 @@ ParseState header_parser(std::string_view view, Request &request)
     if (view.compare(0, 8, "HTTP/1.1") == 0) {  // hardcodat ca acceptam doar 2 versiuni
         request.version_major = 1;
         request.version_minor = 1;
+        request.keep_alive = true;  // HTTP/1.1 defaults to PERSISTENT
     } else if (view.compare(0, 8, "HTTP/1.0") == 0) {  // un fel de strcmp dar nu are nevoie de NULL la final, deci mai safe aici
         request.version_major = 1;
         request.version_minor = 0;
+        request.keep_alive = false;     // HTTP/1.0 defaults to CLOSE
     } else {
         std::cerr<<"Error: Could not find a proper version"<<std::endl;
         return ParseState::ERROR;
@@ -129,6 +131,28 @@ ParseState header_parser(std::string_view view, Request &request)
             {
                 auto key = view.substr(0, colon);  // ce e inainte de :
                 auto val = view.substr(colon + 1, index - (colon + 1));   // ce e dupa : , pana la \r\n
+
+                // Strip leading/trailing whitespace from value safely without underflow
+                auto start = val.find_first_not_of(" \t");
+                if (start == std::string_view::npos) {
+                    val = {};
+                } else {
+                    auto end = val.find_last_not_of(" \t");
+                    val = val.substr(start, end - start + 1);
+                }
+
+                // 1. Check Connection header (length 10)
+                if (key.size() == 10 && strncasecmp(key.data(), "connection", 10) == 0)
+                {
+                    if (val.size() == 5 && strncasecmp(val.data(), "close", 5) == 0) {
+                        request.keep_alive = false;
+                    } 
+                    else if (val.size() == 10 && strncasecmp(val.data(), "keep-alive", 10) == 0) {
+                        request.keep_alive = true;
+                    }
+                }
+
+                // This checks if the client specifically requested connection keep alive or close
 
                 if(key.size()==14)  // 14=sizeof(Content-length). OBLIGATORIU ( something else would be a protocol violation )
                 {

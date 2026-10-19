@@ -36,6 +36,33 @@ void ConnectionState::reset()
     //socket_=Socket(); // reset socket
 }
 
+void ConnectionState::reset_for_next_request()
+{
+    // if already have a part of the 2nd request in our buffer, we parse it
+    size_t body_len = (request_.content_length > 0) ? static_cast<size_t>(request_.content_length) : 0;
+    size_t total_consumed = request_.header_length + body_len;
+
+    size_t leftover=0;
+    if (offset_ >= total_consumed)
+    {
+        memmove(buffer_, buffer_ + total_consumed, offset_ - total_consumed);
+        //mutam ce a rmas la inceputul bufferului pt a citi urm request
+        leftover = offset_ - total_consumed;
+        
+        state_ = State::READING_HEADERS;
+        // prepare to start fresh on the next read
+    }
+    else
+    {
+        offset_ = 0;
+    }
+
+    this->reset();
+    offset_=leftover;
+
+    if(offset_ > 0) parse_request();
+}
+
 void ConnectionState::deactivate()
 {
     is_active=0;
@@ -50,32 +77,6 @@ State ConnectionState::process()
     if (socket_.get_fd() == -1 || state_ == State::CLOSED || state_ == State::ERROR)
     {
         return state_;
-    }
-
-    if(state_==State::PROCESSING)
-    {
-        //if we are here: this means we received one full request, and possibly more
-        // we have processed the first one but it is still in the buffer
-        // so we have to memmove
-        
-        if(offset_ >= request_.header_length + request_.content_length)
-        {
-
-            memmove(buffer_, buffer_ + (request_.header_length + request_.content_length),
-            offset_ - (request_.header_length + request_.content_length));
-            //mutam ce a rmas la inceputul bufferului pt a citi urm request
-
-            offset_=offset_ - (request_.header_length + request_.content_length);
-            request_.reset();
-            state_=State::READING_HEADERS; // prepare to start fresh on the next read
-        }
-
-        if(offset_>0)
-        {
-            //this means we have some of the 2nd request remaining in the buffer
-            // we must process it here, before calling recv again
-           parse_request();
-        }
     }
 
     if(state_==State::READING_HEADERS or state_==State::READING_BODY)
@@ -100,6 +101,13 @@ State ConnectionState::process()
                     // that means we read all current data, and have to wait for the next edge trigger to get more
                     return state_;
                 }
+                else if (errno == ECONNRESET || errno == EPIPE)
+                {
+                    // Client abruptly terminated connection (e.g. wrk finished, user closed browser)
+                    state_ = State::CLOSED;
+                    request_.keep_alive = false;
+                    return state_;
+                }
                 else
                 {
                     // if it is another error
@@ -111,6 +119,7 @@ State ConnectionState::process()
             else if(len==0)
             {
                 state_=State::CLOSED;
+                request_.keep_alive=false;
                 return state_;
                 // We close it. Client doesn't send anything anymore or is very slow.
             }
@@ -121,7 +130,12 @@ State ConnectionState::process()
                 //std::cerr<<"DEBUG: Read inside ConnectionState, len>0"<<std::endl;
                 parse_request();
 
-                return state_;
+                if(state_==State::PROCESSING || state_==State::ERROR)
+                {
+                    return state_;
+                }
+                //else keep reading
+
             }
 
 
@@ -280,11 +294,11 @@ void ConnectionState::send_response()
 
         std::string header;
         header.reserve(256);
-        header = 
-            "HTTP/1.1 200 OK\r\n"
-            "Content-Type: " + std::string(MimeTypes::get_type(URI)) + "\r\n"
-            "Content-Length: " + std::to_string(file_size) + "\r\n"
-            "Connection: close\r\n\r\n";
+        header = "HTTP/1.1 200 OK\r\n"
+                "Content-Type: text/html\r\n"
+                "Content-Length: " + std::to_string(file_size) + "\r\n"
+                + (this->is_keep_alive() ? "Connection: keep-alive\r\n\r\n" 
+                                              : "Connection: close\r\n\r\n");
 
         // here we send the header first
         while(sent<header.size() and size!=-1)
@@ -351,15 +365,17 @@ void ConnectionState::send_response()
 
         if((size_t)send_offset == file_size)
         {
-            state_=State::CLOSED;
             close(file_fd);
-            //change flags in case we might get a second connection; ( only if they send Connection: keep-alive)
-            if(current_events==(EPOLLIN | EPOLLET | EPOLLOUT | EPOLLONESHOT))
+            if (this->is_keep_alive())
             {
-                modify_events(EPOLLIN | EPOLLET | EPOLLONESHOT);
-                // cuz we finished the sending; we don't care about out events anymore
+                // 1. Reset state so we can read the next request
+                this->reset_for_next_request();
             }
-            //std::cerr<<"DEBUG: File sent"<<std::endl;
+            else
+            {
+                // Teardown path
+                state_ = State::CLOSED;
+            }
             return;
         }
 
@@ -401,4 +417,8 @@ void ConnectionState::modify_events(uint32_t events)
 State ConnectionState::get_state()
 {
     return state_;
+}
+
+bool ConnectionState::is_keep_alive() const {
+    return request_.keep_alive;
 }

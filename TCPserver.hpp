@@ -12,6 +12,8 @@
 
 #include <sys/epoll.h> // for epoll
 
+#include <netinet/tcp.h>
+
 #define MAX_EVENTS 512 // max number of events that epoll_wait can return at once
 #define MAX_CONNECTIONS 10000 // max number of clients that can be connected at once
 

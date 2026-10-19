@@ -48,7 +48,11 @@ public:
 
     void reset();
 
+    void reset_for_next_request();
+
     bool active();
+
+    bool is_keep_alive() const;
 
     void init(Socket&& sock);
 
