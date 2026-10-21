@@ -45,7 +45,7 @@ The server uses a **Reactor pattern with a worker thread pool**:
 
 ### Quick Start
 ```bash
-git clone [https://github.com/razvan-anton/cpp-http-server](https://github.com/razvan-anton/cpp-http-server)
+git clone https://github.com/razvan-anton/cpp-http-server
 cd cpp-http-server
 make
 ./my_server
@@ -99,7 +99,7 @@ The server was optimized across three steps:
 | **p99 Latency** | 7.59 ms | 3.01 ms | **2.63 ms** | **-65.3%** |
 
 ```text
-$ wrk -t16 -c100 -d10s --latency [http://127.0.0.1:8080/index.html](http://127.0.0.1:8080/index.html)
+$ wrk -t16 -c100 -d10s --latency http://127.0.0.1:8080/index.html
   3647184 requests in 10.01s, 2.55GB read
 Requests/sec: 364218.36
 Transfer/sec:    261.20MB
@@ -118,7 +118,7 @@ Transfer/sec:    261.20MB
 | **p99 Latency** | 5.02 ms | 2.55 ms | **2.79 ms** | **-44.4%** |
 
 ```text
-$ wrk -t16 -c100 -d10s --latency [http://127.0.0.1:8080/cat.jpg](http://127.0.0.1:8080/cat.jpg)
+$ wrk -t16 -c100 -d10s --latency http://127.0.0.1:8080/cat.jpg
   956568 requests in 10.03s, 175.60GB read
 Requests/sec:  95392.65
 Transfer/sec:     17.51GB
@@ -131,8 +131,10 @@ Profiling with Tracy showed that `get_abs_path` was taking **24.59 µs per call*
 
 After caching `./public` paths at startup, `get_abs_path` dropped out of the hot path completely, pushing throughput from **240k to 364k RPS**. Also verified zero mutex contention across worker threads.
 
-![Before Path Cache]<img width="929" height="454" alt="image" src="https://github.com/user-attachments/assets/9099495e-b984-438e-aaa1-05f82096437e" />
-![After Path Cache] <img width="1282" height="502" alt="image" src="https://github.com/user-attachments/assets/0c003ba1-57b7-4b4f-ba60-279200069935" />
+Before Path Cache: ( around 25 microseconds per call ):
+<img width="929" height="454" alt="image" src="https://github.com/user-attachments/assets/9099495e-b984-438e-aaa1-05f82096437e" />
+After Path Cache: Out of the hot path ( probably around 25 nanoseconds per call ):
+<img width="1282" height="502" alt="image" src="https://github.com/user-attachments/assets/0c003ba1-57b7-4b4f-ba60-279200069935" />
 
 
 
@@ -144,7 +146,5 @@ After caching `./public` paths at startup, `get_abs_path` dropped out of the hot
 * **Timeout Reaper:** Add a doubly-linked list inside the connection array to track timestamps and evict idle/slow connections in $O(1)$ to stop Slowloris attacks.
 * **Shared Buffer Pool:** Replace fixed 8 KB buffers per connection with a chunk allocator so the server can scale past 100k idle connections without wasting memory.
 * **Thread-per-Core (`SO_REUSEPORT`):** Give each CPU core its own independent `epoll` loop to remove task queue mutex contention completely.
-
-```
 
 ```
