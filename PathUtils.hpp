@@ -6,10 +6,10 @@
 #include <iostream> //for debugging
 #include <cstddef> // for size_t
 #include <sys/stat.h>   // for fstat
+#include <unordered_map>
 
 namespace File{
-
-    std::optional<std::string> get_abs_path(std::string_view &s);
+    const std::string* get_abs_path(std::string_view s);
 
     size_t get_file_size(const int file_fd);
 

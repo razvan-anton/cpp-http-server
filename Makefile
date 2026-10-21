@@ -14,6 +14,10 @@ all: $(NAME)
 profile: CXXFLAGS += -DTRACY_ENABLE
 profile: clean $(NAME)
 
+tsan: CXXFLAGS = -Wall -Wextra -Wshadow -std=c++20 -O1 -g -fno-omit-frame-pointer -fsanitize=thread -isystem profiler/tracy/public
+tsan: LDFLAGS = -fsanitize=thread -lpthread -ldl
+tsan: clean $(NAME)
+
 # 1. Linking Stage
 $(NAME): $(OBJS)
 	$(CXX) $(OBJS) $(LDFLAGS) -o $(NAME)

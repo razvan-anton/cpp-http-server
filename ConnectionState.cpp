@@ -254,8 +254,8 @@ void ConnectionState::send_response()
     if( state_ == State::SENDING_HEADER)
     {
         auto URI = this->getURI();
-        std::optional<std::string> optional_path=File::get_abs_path(URI);
-        if(!optional_path)
+        const std::string* abs_path=File::get_abs_path(URI);
+        if(!abs_path)
         {
             std::cerr<<"Wrong path given"<<std::endl;
             // PathUtils a gasit o problema la path given
@@ -267,7 +267,7 @@ void ConnectionState::send_response()
 
         if(file_fd==-1)
         {
-            file_fd=open(optional_path->c_str(),O_RDONLY);
+            file_fd=open(abs_path->c_str(),O_RDONLY);
             //open gives us the fd
             if(file_fd==-1)
             {
