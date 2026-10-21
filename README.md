@@ -131,11 +131,15 @@ Profiling with Tracy showed that `get_abs_path` was taking **24.59 µs per call*
 
 After caching `./public` paths at startup, `get_abs_path` dropped out of the hot path completely, pushing throughput from **240k to 364k RPS**. Also verified zero mutex contention across worker threads.
 
-Before Path Cache: ( around 25 microseconds per call ):
-<img width="929" height="454" alt="image" src="https://github.com/user-attachments/assets/9099495e-b984-438e-aaa1-05f82096437e" />
-After Path Cache: Out of the hot path ( probably around 25 nanoseconds per call ):
-<img width="1282" height="502" alt="image" src="https://github.com/user-attachments/assets/0c003ba1-57b7-4b4f-ba60-279200069935" />
+### Before Path Cache: ( around 25 microseconds per call ):
 
+<img width="929" height="454" alt="image" src="https://github.com/user-attachments/assets/9099495e-b984-438e-aaa1-05f82096437e" />
+
+
+
+### After Path Cache: Out of the hot path ( around 25 nanoseconds per call ):
+
+<img width="1282" height="502" alt="image" src="https://github.com/user-attachments/assets/0c003ba1-57b7-4b4f-ba60-279200069935" />
 
 
 
@@ -147,4 +151,3 @@ After Path Cache: Out of the hot path ( probably around 25 nanoseconds per call 
 * **Shared Buffer Pool:** Replace fixed 8 KB buffers per connection with a chunk allocator so the server can scale past 100k idle connections without wasting memory.
 * **Thread-per-Core (`SO_REUSEPORT`):** Give each CPU core its own independent `epoll` loop to remove task queue mutex contention completely.
 
-```
