@@ -39,20 +39,22 @@ jobs:
           make clean
           make tsan
           
-          # Start the instrumented server in the background
+          # Start server in background
           ./my_server &
           SERVER_PID=$!
           
-          # Wait briefly for socket binding
+          # Allow socket to bind
           sleep 2
           
-          # Fire requests with a strict max-time so curl never hangs
+          # Fire 20 requests with a hard 2-second timeout
           for i in {1..20}; do
             curl --max-time 2 -s http://localhost:8080/ > /dev/null &
           done
-          wait
           
-          # Gracefully signal exit, wait up to 3s, then force-kill if hung
+          # Give curl jobs 3 seconds to complete (do NOT use bare 'wait' - it blocks on my_server)
+          sleep 3
+          
+          # Gracefully signal server to flush TSan logs, then terminate
           kill -SIGINT $SERVER_PID 2>/dev/null || true
           sleep 2
           kill -9 $SERVER_PID 2>/dev/null || true
