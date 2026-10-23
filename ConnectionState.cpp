@@ -289,13 +289,15 @@ void ConnectionState::send_response()
         ssize_t size=0;
 
         // we assemble the header: a standard 200 OK message,
-        //but the Content Length needs to be the size from FileMapper
+        //but the Content Length needs to be the size of the load
         // and Content Type is from the extension, with the help of MimeTypes class
 
         std::string header;
+        std::string_view path_view = *abs_path;
+        std::string_view mime_type = MimeTypes::get_type(path_view);
         header.reserve(256);
         header = "HTTP/1.1 200 OK\r\n"
-                "Content-Type: text/html\r\n"
+                "Content-Type: "+ std::string(mime_type) + "\r\n"
                 "Content-Length: " + std::to_string(file_size) + "\r\n"
                 + (this->is_keep_alive() ? "Connection: keep-alive\r\n\r\n" 
                                               : "Connection: close\r\n\r\n");
