@@ -13,6 +13,8 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Install Toolchain & Dependencies
         run: |
@@ -22,8 +24,9 @@ jobs:
       - name: Run Clang-Tidy Static Analysis
         run: |
           # Analyzes core server translation units against .clang-tidy config
-          clang-tidy Parser.cpp MimeTypes.cpp PathUtils.cpp TCPserver.cpp threadPool.cpp ConnectionState.cpp \
-            -- -std=c++20 -isystem profiler/tracy/public
+          clang-tidy \
+          Parser.cpp MimeTypes.cpp PathUtils.cpp TCPserver.cpp threadPool.cpp ConnectionState.cpp \
+          -- -std=c++20 -I. -Iprofiler/tracy/public
 
       - name: Compile Release Binary
         run: make clean && make -j$(nproc)
