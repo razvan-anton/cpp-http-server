@@ -1,0 +1,54 @@
+name: C++ CI Quality Pipeline
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  static-and-unit-tests:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Install Toolchain & Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y g++ make libgtest-dev clang-tidy curl
+
+      - name: Run Clang-Tidy Static Analysis
+        run: |
+          # Analyzes core server translation units against .clang-tidy config
+          clang-tidy Parser.cpp MimeTypes.cpp PathUtils.cpp TCPserver.cpp threadPool.cpp ConnectionState.cpp \
+            -- -std=c++20 -isystem profiler/tracy/public
+
+      - name: Compile Release Binary
+        run: make clean && make -j$(nproc)
+
+      - name: Run GoogleTest Suite
+        run: make test
+
+      - name: Build and Run Under ThreadSanitizer
+        run: |
+          make clean
+          make tsan
+          
+          # Start the instrumented server in the background
+          ./my_server &
+          SERVER_PID=$!
+          
+          # Give socket 1 second to bind and listen
+          sleep 1
+          
+          # Generate concurrent requests to exercise worker threads
+          for i in {1..30}; do
+            curl -s http://localhost:8080/ > /dev/null &
+          done
+          wait
+          
+          # Terminate server gracefully (TSan dumps data-race reports on exit)
+          kill -SIGINT $SERVER_PID
+          wait $SERVER_PID || true
