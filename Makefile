@@ -18,6 +18,16 @@ tsan: CXXFLAGS = -Wall -Wextra -Wshadow -std=c++20 -O1 -g -fno-omit-frame-pointe
 tsan: LDFLAGS = -fsanitize=thread -lpthread -ldl
 tsan: clean $(NAME)
 
+TEST_CORE_SRCS = Parser.cpp MimeTypes.cpp PathUtils.cpp
+TEST_BIN = run_tests
+
+test: $(TEST_CORE_SRCS) tests/test_parser.cpp
+	$(CXX) $(CXXFLAGS) tests/test_parser.cpp $(TEST_CORE_SRCS) -lgtest -lgtest_main $(LDFLAGS) -o $(TEST_BIN)
+	./$(TEST_BIN)
+
+clean_tests:
+	rm -f $(TEST_BIN)
+
 # 1. Linking Stage
 $(NAME): $(OBJS)
 	$(CXX) $(OBJS) $(LDFLAGS) -o $(NAME)

@@ -5,4 +5,4 @@ a.out
 *.json
 *.tracy
 compile_commands.json
-tracy_profiles/
+tracy_profiles/run_tests
