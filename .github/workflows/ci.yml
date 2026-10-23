@@ -58,3 +58,6 @@ jobs:
           kill -SIGINT $SERVER_PID 2>/dev/null || true
           sleep 2
           kill -9 $SERVER_PID 2>/dev/null || true
+
+      - name: Verify Docker Container Build
+        run: docker build -t http-server:test .
