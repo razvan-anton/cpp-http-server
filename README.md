@@ -33,23 +33,33 @@ The server uses a **Reactor pattern with a worker thread pool**:
 - **Partial Writes:** If the kernel send buffer fills up (`EAGAIN`), the socket is modified to listen for `EPOLLOUT` and resumed once writable.
 - **Zero-Copy File Delivery:** Uses `sendfile()` to transfer files straight from the Linux Page Cache to the socket without copying bytes into user space.
 - **Tooling & Sanitizers:** Validated race-free with ThreadSanitizer (`make tsan`), profiled with Tracy (`make profile`), and scanned with Clang-Tidy.
+- - **Containerization:** Multi-stage Docker build packaging the binary into an isolated runtime with no toolchain overhead.
 
 ---
 
 ## Build & Run
 
 ### Prerequisites
-- Linux
-- GCC / G++ with C++20 support
+- Linux (for native compilation) or Docker (cross-platform on macOS/Windows/Linux)
+- - GCC / G++ with C++20 support
 - `make`
 
-### Quick Start
+### Quick Start ( Linux )
 ```bash
 git clone https://github.com/razvan-anton/cpp-http-server
 cd cpp-http-server
 make
 ./my_server
 
+```
+
+### Docker (Any OS)
+Run without installing local C++20 compilers or dependencies:
+```bash
+git clone https://github.com/razvan-anton/cpp-http-server
+cd cpp-http-server
+docker build -t server .
+docker run -p 8080:8080 server
 ```
 
 **Other Build Targets:**
