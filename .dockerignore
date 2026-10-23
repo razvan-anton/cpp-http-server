@@ -1,0 +1,7 @@
+.git
+.github
+*.o
+my_server
+run_tests
+compile_commands.json
+.vscode
